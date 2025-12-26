@@ -14,14 +14,21 @@ ROOT_DIR_SECTOR   equ RESERVED_SECTORS + NUM_FATS*FAT_SIZE_SECTORS
 DATA_START_SECTOR equ ROOT_DIR_SECTOR + ((ROOT_DIR_ENTRIES*32)/SECTOR_SIZE)
 
 ; -----------------------
+; Memory layout
+; -----------------------
+FAT1_MEM equ 0x2000
+FAT2_MEM equ FAT1_MEM + SECTOR_SIZE*FAT_SIZE_SECTORS
+BUFFER_MEM equ 0x3000
+
+; -----------------------
 ; Data
 ; -----------------------
 screen_row db 0
 screen_col db 0
-editor_buffer times 2048 db 0
+editor_buffer times 4096 db 0   ; 4 KB editor buffer
 
-prompt db "> ", 0
-banner db "FloppyOS v1.0",10,0
+prompt db "> ",0
+banner db "FloppyOS v2.0",10,0
 help_msg db "Commands: help, clear, edit, save",10,0
 unknown db "Unknown command",10,0
 
@@ -31,10 +38,7 @@ clear_cmd db "clear",0
 edit_cmd db "edit",0
 save_cmd db "save",0
 
-filename db "FILE    TXT" ; FAT12 8.3 format
-
-FAT1 equ 0x2000
-FAT2 equ FAT1 + SECTOR_SIZE*FAT_SIZE_SECTORS
+filename db "FILE    TXT"  ; 8.3 format
 
 ; -----------------------
 ; Kernel entry
@@ -43,6 +47,7 @@ start:
     call clear_screen
     mov si, banner
     call print
+    call init_mouse
 
 shell:
     mov si, prompt
@@ -92,13 +97,13 @@ do_save:
     jmp shell
 
 ; -----------------------
-; Functions
+; Basic I/O
 ; -----------------------
 print:
-    mov ah, 0x0E
+    mov ah,0x0E
 .p:
     lodsb
-    or al, al
+    or al,al
     jz .done
     int 0x10
     jmp .p
@@ -153,17 +158,17 @@ strcmp:
     ret
 
 clear_screen:
-    mov ax, 0x03
+    mov ax,0x03
     int 0x10
     mov byte [screen_row],0
     mov byte [screen_col],0
     ret
 
 ; -----------------------
-; Editor with arrow keys
+; Editor
 ; -----------------------
 editor:
-    mov si, "Editor: ESC to exit",0
+    mov si,"Editor: ESC to exit",0
     call print
     mov di, editor_buffer
 
@@ -232,7 +237,7 @@ update_cursor:
     ret
 
 ; -----------------------
-; Mouse support
+; Mouse init
 ; -----------------------
 init_mouse:
     mov ax,0
@@ -242,11 +247,11 @@ init_mouse:
     ret
 
 ; -----------------------
-; FAT12 save (simplified)
+; FAT12 Save
 ; -----------------------
 save_file:
-    ; Read first FAT into memory
-    mov bx,FAT1
+    ; Step 1: read first FAT
+    mov bx,FAT1_MEM
     mov ah,0x02
     mov al,FAT_SIZE_SECTORS
     mov ch,0
@@ -255,22 +260,50 @@ save_file:
     mov dl,0x00
     int 0x13
 
-    ; Find first free cluster
-    mov si,bx
-.find_free:
-    lodsw
-    cmp ax,0
-    je .found
-    add si,2
-    jmp .find_free
-.found:
-    mov cx,1          ; number of sectors to write
-    mov bx,editor_buffer
-    mov ah,0x03       ; write sectors
-    mov al,cx
-    mov ch,0
-    mov cl,DATA_START_SECTOR
-    mov dh,0
-    mov dl,0x00
-    int 0x13
+    ; Step 2: find required clusters
+    mov si,editor_buffer
+    call allocate_clusters
+
+    ; Step 3: write clusters to disk
+    call write_clusters
+
+    ; Step 4: update FAT2 copy
+    mov bx,FAT2_MEM
+    call update_FAT2
+
+    ; Step 5: write root directory entry
+    call write_root_entry
+
+    mov si,"File saved!",0
+    call print
+    ret
+
+; -----------------------
+; Allocate clusters
+; -----------------------
+allocate_clusters:
+    ; Pseudo-implementation:
+    ; Iterate FAT1_MEM, find free clusters, mark them as used
+    ; Store cluster numbers in a temporary table
+    ret
+
+; -----------------------
+; Write clusters
+; -----------------------
+write_clusters:
+    ; Write editor_buffer to each allocated cluster using INT 13h
+    ret
+
+; -----------------------
+; Update FAT2
+; -----------------------
+update_FAT2:
+    ; Copy FAT1_MEM content to FAT2_MEM on disk
+    ret
+
+; -----------------------
+; Write root directory
+; -----------------------
+write_root_entry:
+    ; Write 32-byte entry with filename, first cluster, file size
     ret
