@@ -10,7 +10,7 @@ It is designed to fit easily within a 1 MB floppy disk.
 - No libc
 - No POSIX
 - Boots via BIOS
-- >= 10 KB total size
+-  >= 10 KB total size
 
 ## Requirements
 - NASM
